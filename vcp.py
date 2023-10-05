@@ -2,21 +2,11 @@ import os
 import config
 import time
 import sys
-import paramiko
+from paramiko import SSHClient
 import base64
-
-
-def find_locally(signal_folder,queue):
-    os_list = list(os.listdir(signal_folder)) # filter for files only - FIXME
-    results = [signal_folder+i for i in os_list if i.endswith('.request')]
-    for file in results:
-        fd = os.open(file, os.O_RDONLY)
-        request = os.read(fd,1000)
-        request = request.decode().split('\n')
-        os.close(fd)
-        queue = add_to_queue(queue,request)
-        rename_locally(file,".queued")
-    return queue
+from scp import SCPClient, SCPException
+import json
+import multiprocessing
 
 def find_ssh(client,signal_folder,queue):
     stdin, stdout, stderr = client.exec_command( 'find '+signal_folder+' -name "*.request" ')
@@ -27,59 +17,70 @@ def find_ssh(client,signal_folder,queue):
         for row in sout:
             row = row.strip('\n')
             request.append(row)
-        queue = add_to_queue(queue,request)
-        rename_ssh(line,".queued")
+        queue = add_to_queue(queue,request,line)
+        rename_ssh(client,line,line+".queued")
     return queue
 
-def add_to_queue(queue,request):
-    qval = config.queue_vals[request[2]]
-    ## THis can probably be done more efficiently
+def add_to_queue(queue,request,line):
+    if len(request) > 2:
+        qval = config.queue_vals[request[2]]
+    else:
+        qval = 30000
+    tmp = {}
+    tmp['file'] = request[0]
+    tmp['to'] = request[1]
+    tmp['request'] = line
+    ## This can probably be done more efficiently
     if qval in queue:
         for i in range(qval,qval+9999,1):
             if i not in queue:
-                tmp = {}
-                tmp['file'] = request[0]
-                tmp['to'] = request[1]
                 queue[i] = tmp
                 break
     else:
-        tmp = {}
-        tmp['file'] = request[0]
-        tmp['to'] = request[1]
-        queue[config.queue_vals[request[2]]] = tmp
-    #depending on prio add to place in queue
+        queue[qval] = tmp
     return queue
 
 
-def fetch_data(data,to_server):
-    command = "scp "+data+" "+to_server
-    code = 1
-    #run scp, return 1 if success
-    return code
+def fetch_data(data,restore_path,client):
+    scp = SCPClient(client.get_transport())
+    scp.put(data,remote_path=restore_path)
+    scp.close()
+    if compare_sizes(data,restore_path+"/"+os.path.basename(data),client):
+        return 1
+    else:
+        return 0
 
-def rename_locally(file,end):
-    new_name = file+end
-    os.rename(file,new_name)
-    return 1
+def compare_sizes(file,file2,client):
+    file_size = os.path.getsize(file)
+    command = 'stat -c%s '+file2
+    stdin, stdout, stderr = client.exec_command( command )
+    file2_size = []
+    for i in stdout:
+        file2_size.append(i.strip('\n'))
+    if int(file_size) == int(file2_size[0]):
+        return 1
+    else:
+        return 0
 
-def rename_ssh(file,end):
-    new_file = file+end
-    stdin, stdout, stderr = client.exec_command( 'mv '+file+' '+new_file)
+
+def rename_ssh(client,file,new_file):
+    client.exec_command( 'mv '+file+' '+new_file)
     return 1
 
 def connect_to_ssh(server):
-    client = paramiko.SSHClient()
+    client = SSHClient()
     host_keys = client.load_system_host_keys()
     client.connect(server, username='viktor', password=config.password)
     return client
 
 
-test = 1
-ssh = 1
+test = config.test
+
+# make queue loadable at start to resume if vcp dies for some reason. JSON output current queue
 queue = {}
 
 if test:
-    os.popen('cp tests/1234.request tests/.signal/1233.request') 
+    os.popen('cp tests/1233.request tests/.signal/1233.request') 
     os.popen('cp tests/1234.request tests/.signal/1234.request') 
     os.popen('cp tests/1235.request tests/.signal/1235.request') 
     os.popen('cp tests/1236.request tests/.signal/1236.request')
@@ -87,31 +88,40 @@ if test:
     signal_folder = config.signal_folder_test
     scriptroot = sys.path[0]
     signal_folder = scriptroot+"/"+signal_folder
+    restore_folder = scriptroot+"/"+config.restore_folder_test
 else:
     server = config.remote
-    signal_folder = config.signal_folder    
-if ssh:
-    client = connect_to_ssh(server)
+    signal_folder = config.signal_folder
+    restore_folder = config.restore_folder
+
+client = connect_to_ssh(server)
 
 while(1):
     ## sleep has to be at start, os.read buffering issues
     time.sleep(2)
-    if ssh:
-        queue = find_ssh(client,signal_folder,queue)
-    else:
-        queue = find_locally(signal_folder,queue)
     # check connectivity to remote
+    queue = find_ssh(client,signal_folder,queue)
     # print current queue on exit
     qkeys = list(queue.keys())
     qkeys.sort()
-    queue_sorted = {i:queue[i] for i in qkeys}
+    queue = {i:queue[i] for i in qkeys}
     print("CURRENT QUEUE")
-    for q in queue_sorted:
+    if queue:
+        do_me = next(iter(queue))
+    else:
+        continue
+    if fetch_data(queue[do_me]['file'],restore_folder,client):
+        print("data transfered successfully")
+        rename_ssh(client,queue[do_me]['request']+".queued",queue[do_me]['request']+".done")
+        del(queue[do_me])
+    for q in queue:
         print(q,end="\t")
         print(queue[q]['file'],end="\t")
-        print(queue[q]['to'])
+        print(queue[q]['to'],end="\t")
+        print(queue[q]['request'])
     print("\n\n")
-    # perform first task, highest prio
-    #fetch_data(queue[1],to_server)
+    with open('queue.json', 'w') as fp:
+        json.dump(queue, fp)
+
     
 
