@@ -8,7 +8,7 @@ password = os.environ["PASS_LENNIE"]
 
 ### test ###
 test = 1
-remote_test = "127.0.0.1"
+remote_test = "localhost"
 signal_folder_test = "tests/.signal/"
 restore_folder_test = "tests/transfer/"
 test_delay = 10

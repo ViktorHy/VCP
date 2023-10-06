@@ -2,7 +2,7 @@ import os
 import config
 import time
 import sys
-from paramiko import SSHClient
+from paramiko import SSHClient, AutoAddPolicy
 import base64
 from scp import SCPClient, SCPException
 import json
@@ -11,16 +11,17 @@ import json
 def find_ssh(client,signal_folder,queue):
     stdin, stdout, stderr = client.exec_command( 'find '+signal_folder+' -name "*.request" ')
     for line in stdout:
-        noend = line.split('.')
-        line = noend[0]
+        line = os.path.basename(line)
+        line = line.split('.')
+        line = line[0]
+        line = signal_folder+"/"+line
         request = []
-        line = line.strip('\n')
-        sin, sout, serr = client.exec_command( 'cat '+line+".request" )
+        sin, sout, serr = client.exec_command( 'cat '+line+'.request' )
         for row in sout:
             row = row.strip('\n')
             request.append(row)
         queue = add_to_queue(queue,request,line)
-        rename_ssh(client,line,line+".queued")
+        rename_ssh(client,line+".request",line+".queued")
     return queue
 
 def add_to_queue(queue,request,line):
@@ -72,6 +73,7 @@ def rename_ssh(client,file,new_file):
 def connect_to_ssh(server):
     client = SSHClient()
     host_keys = client.load_system_host_keys()
+    client.set_missing_host_key_policy(AutoAddPolicy())
     client.connect(server, username='viktor', password=config.password)
     return client
 
