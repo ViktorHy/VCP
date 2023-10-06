@@ -6,14 +6,16 @@ from paramiko import SSHClient
 import base64
 from scp import SCPClient, SCPException
 import json
-import multiprocessing
+
 
 def find_ssh(client,signal_folder,queue):
     stdin, stdout, stderr = client.exec_command( 'find '+signal_folder+' -name "*.request" ')
     for line in stdout:
+        noend = line.split('.')
+        line = noend[0]
         request = []
         line = line.strip('\n')
-        sin, sout, serr = client.exec_command( 'cat '+line )
+        sin, sout, serr = client.exec_command( 'cat '+line+".request" )
         for row in sout:
             row = row.strip('\n')
             request.append(row)
@@ -73,6 +75,8 @@ def connect_to_ssh(server):
     client.connect(server, username='viktor', password=config.password)
     return client
 
+    
+
 
 test = config.test
 
@@ -80,6 +84,7 @@ test = config.test
 queue = {}
 
 if test:
+    os.popen('cp tests/1232.request tests/.signal/1232.request')
     os.popen('cp tests/1233.request tests/.signal/1233.request') 
     os.popen('cp tests/1234.request tests/.signal/1234.request') 
     os.popen('cp tests/1235.request tests/.signal/1235.request') 
@@ -110,10 +115,14 @@ while(1):
         do_me = next(iter(queue))
     else:
         continue
-    if fetch_data(queue[do_me]['file'],restore_folder,client):
-        print("data transfered successfully")
-        rename_ssh(client,queue[do_me]['request']+".queued",queue[do_me]['request']+".done")
+    if not os.path.exists(queue[do_me]['file']):
+        rename_ssh(client,queue[do_me]['request']+".queued",queue[do_me]['request']+".fnf")
         del(queue[do_me])
+    else:
+        if fetch_data(queue[do_me]['file'],restore_folder,client):
+            print("data transfered successfully")
+            rename_ssh(client,queue[do_me]['request']+".queued",queue[do_me]['request']+".done")
+            del(queue[do_me])
     for q in queue:
         print(q,end="\t")
         print(queue[q]['file'],end="\t")
