@@ -25,6 +25,12 @@ def demand_copy(signal,file,transfer_loc):
         if os.path.exists(os.path.join(signal, unique_id + '.identical')):
             print(" Done!")
             return 0
+        if os.path.exists(os.path.join(signal, unique_id + '.failed')):
+            print(" Transfer failed")
+            return 2
+        if os.path.exists(os.path.join(signal, unique_id + '.fnf')):
+            print(" Could not find file to transfer")
+            return 3
         if waiting_time * cnt > 3000 and not os.path.exists(os.path.join(signal, unique_id + '.queued')):
             print(" No response from daemon. Giving up!")
             return 4
