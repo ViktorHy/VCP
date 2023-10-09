@@ -46,8 +46,8 @@ if test:
     signal_folder = scriptroot+"/"+signal_folder
     request = ["/mnt/c/Users/212814/dev/vcp/tests/copyme5","/mnt/c/Users/212814/dev/vcp/tests/transfer"]
 else:
-    signal_folder = config.signal_folder 
-    request = []
+    signal_folder = config.signal_folder
+    request = [sys.argv[1],sys.argv[2]]
 
 exitcode = demand_copy(signal_folder,request[0],request[1])
 
