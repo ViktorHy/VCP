@@ -8,7 +8,6 @@ def demand_copy(signal,file,transfer_loc):
     rnd = str(random.randint(0, 100000))
     unique_id = str(int(time.time())) + "-" + rnd
     signal_file_path = os.path.join(signal, unique_id + ".request")
-    print(signal_file_path)
     with open(signal_file_path, 'w') as signal_fh:
         signal_fh.write(f"{file}\n{transfer_loc}")
 
@@ -17,14 +16,16 @@ def demand_copy(signal,file,transfer_loc):
     cnt = 0
     while(1):
         time.sleep(waiting_time)
-        print(os.path.join(signal, unique_id + '.done'))
         if not started and os.path.exists(os.path.join(signal, unique_id + '.queued')):
             print(" Transferring.", end="")
             started = True
         if os.path.exists(os.path.join(signal, unique_id + '.done')):
             print(" Done!")
             return 0
-        if waiting_time * cnt > 300 and not os.path.exists(os.path.join(signal, unique_id + '.queued')):
+        if os.path.exists(os.path.join(signal, unique_id + '.identical')):
+            print(" Done!")
+            return 0
+        if waiting_time * cnt > 3000 and not os.path.exists(os.path.join(signal, unique_id + '.queued')):
             print(" No response from daemon. Giving up!")
             return 4
         cnt = cnt+1
@@ -42,4 +43,6 @@ else:
     signal_folder = config.signal_folder 
     request = []
 
-demand_copy(signal_folder,request[0],request[1])
+exitcode = demand_copy(signal_folder,request[0],request[1])
+
+exit(code=exitcode)

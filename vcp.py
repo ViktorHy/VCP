@@ -20,6 +20,10 @@ def find_ssh(client,signal_folder,queue):
         for row in sout:
             row = row.strip('\n')
             request.append(row)
+        ## check that file has instructions
+        if len(request) < 2:
+            rename_ssh(client,line+".request",line+".failed")
+            continue
         queue = add_to_queue(queue,request,line)
         rename_ssh(client,line+".request",line+".queued")
     return queue
@@ -77,7 +81,16 @@ def connect_to_ssh(server):
     client.connect(server, username='viktor', password=config.password)
     return client
 
-    
+def identical(client,src,dest):  
+    try:
+        scp = SCPClient(client.get_transport())
+        scp.get(dest+"/"+os.path.basename(src))
+        if compare_sizes(src,dest+"/"+os.path.basename(src),client):
+            scp.close()
+            return 1
+    except:
+        return 0
+
 
 
 test = config.test
@@ -103,9 +116,22 @@ else:
 
 client = connect_to_ssh(server)
 
+
 while(1):
     ## sleep has to be at start, os.read buffering issues
     time.sleep(2)
+
+    # if client.get_transport() is not None:
+    #     print("connection is ait")
+    #     client.get_transport().is_active()
+    # else:
+    #     try:
+    #         print("trying to reconnect")
+    #         client = connect_to_ssh(server)
+    #     except:
+    #         continue
+
+        
     # check connectivity to remote
     queue = find_ssh(client,signal_folder,queue)
     # print current queue on exit
@@ -121,18 +147,26 @@ while(1):
         rename_ssh(client,queue[do_me]['request']+".queued",queue[do_me]['request']+".fnf")
         del(queue[do_me])
     else:
-        if fetch_data(queue[do_me]['file'],restore_folder,client):
+        if identical(client,queue[do_me]['file'],restore_folder):
+            rename_ssh(client,queue[do_me]['request']+".queued",queue[do_me]['request']+".identical")
+            del(queue[do_me])
+        elif fetch_data(queue[do_me]['file'],restore_folder,client):
             print("data transfered successfully")
             rename_ssh(client,queue[do_me]['request']+".queued",queue[do_me]['request']+".done")
             del(queue[do_me])
-    for q in queue:
-        print(q,end="\t")
-        print(queue[q]['file'],end="\t")
-        print(queue[q]['to'],end="\t")
-        print(queue[q]['request'])
-    print("\n\n")
+        else:
+            rename_ssh(client,queue[do_me]['request']+".queued",queue[do_me]['request']+".failed")
+            del(queue[do_me])
+    if test:
+        for q in queue:
+            print(q,end="\t")
+            print(queue[q]['file'],end="\t")
+            print(queue[q]['to'],end="\t")
+            print(queue[q]['request'])
+        print("\n\n")
     with open('queue.json', 'w') as fp:
         json.dump(queue, fp)
+
 
     
 
